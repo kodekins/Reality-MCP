@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: reality
+    description: Reality world state operations
 paths:
   /healthz:
     get:
@@ -24,6 +26,116 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /overview:
+    get:
+      operationId: getRealityOverview
+      tags: [reality]
+      summary: Get the Reality overview
+      responses:
+        "200":
+          description: Reality overview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RealityOverview"
+  /events:
+    get:
+      operationId: listRealityEvents
+      tags: [reality]
+      summary: List world state events
+      parameters:
+        - name: query
+          in: query
+          required: false
+          schema: { type: string }
+        - name: event_type
+          in: query
+          required: false
+          schema: { type: string }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+      responses:
+        "200":
+          description: Event history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RealityEvent"
+  /state:
+    get:
+      operationId: getCurrentRealityState
+      tags: [reality]
+      summary: Get the latest structured world state
+      responses:
+        "200":
+          description: Current world state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorldState"
+  /analyze:
+    post:
+      operationId: analyzeRealityFrame
+      tags: [reality]
+      summary: Analyze a camera frame or advance mock mode
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnalyzeFrameInput"
+      responses:
+        "200":
+          description: Analysis result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisResult"
+  /settings:
+    get:
+      operationId: getRealitySettings
+      tags: [reality]
+      summary: Get monitoring settings
+      responses:
+        "200":
+          description: Monitoring settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RealitySettings"
+    patch:
+      operationId: updateRealitySettings
+      tags: [reality]
+      summary: Update monitoring settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RealitySettingsUpdate"
+      responses:
+        "200":
+          description: Updated monitoring settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RealitySettings"
+  /camera/status:
+    get:
+      operationId: getRealityCameraStatus
+      tags: [reality]
+      summary: Get camera connectivity status
+      responses:
+        "200":
+          description: Camera status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CameraStatus"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +145,102 @@ components:
           type: string
       required:
         - status
+    RealityObject:
+      type: object
+      required: [name, category, count, confidence]
+      properties:
+        name: { type: string }
+        category: { type: string }
+        count: { type: integer, minimum: 0 }
+        confidence: { type: number, minimum: 0, maximum: 1 }
+        color: { type: ["string", "null"] }
+    WorldState:
+      type: object
+      required: [location, camera, zone, captured_at, summary, objects, people_count]
+      properties:
+        location: { type: string }
+        camera: { type: string }
+        zone: { type: string }
+        captured_at: { type: string }
+        summary: { type: string }
+        objects:
+          type: array
+          items: { $ref: "#/components/schemas/RealityObject" }
+        people_count: { type: integer, minimum: 0 }
+    RealityEvent:
+      type: object
+      required: [id, event_type, description, zone, created_at, severity]
+      properties:
+        id: { type: string }
+        event_type: { type: string }
+        object_name: { type: ["string", "null"] }
+        description: { type: string }
+        zone: { type: string }
+        severity: { type: string }
+        created_at: { type: string }
+    CameraStatus:
+      type: object
+      required: [name, type, status, last_seen_at, frames_analyzed, ai_calls, mode]
+      properties:
+        name: { type: string }
+        type: { type: string }
+        status: { type: string }
+        last_seen_at: { type: ["string", "null"] }
+        frames_analyzed: { type: integer }
+        ai_calls: { type: integer }
+        mode: { type: string }
+    RealitySettings:
+      type: object
+      required: [interval_seconds, change_detection_enabled, sensitivity, snapshot_policy, vision_provider]
+      properties:
+        interval_seconds: { type: integer, enum: [3, 5, 10, 30] }
+        change_detection_enabled: { type: boolean }
+        sensitivity: { type: number, minimum: 0, maximum: 1 }
+        snapshot_policy: { type: string, enum: [events_only, none] }
+        vision_provider: { type: string }
+    RealitySettingsUpdate:
+      type: object
+      properties:
+        interval_seconds: { type: integer, enum: [3, 5, 10, 30] }
+        change_detection_enabled: { type: boolean }
+        sensitivity: { type: number, minimum: 0, maximum: 1 }
+        snapshot_policy: { type: string, enum: [events_only, none] }
+    AnalyzeFrameInput:
+      type: object
+      properties:
+        force: { type: boolean }
+        image_data: { type: ["string", "null"], maxLength: 5000000 }
+    AnalysisResult:
+      type: object
+      required: [analyzed, changed, state, event]
+      properties:
+        analyzed: { type: boolean }
+        changed: { type: boolean }
+        message: { type: string }
+        state: { $ref: "#/components/schemas/WorldState" }
+        event:
+          oneOf:
+            - $ref: "#/components/schemas/RealityEvent"
+            - type: "null"
+    RealityOverview:
+      type: object
+      required: [organization, location, zone, state, events, camera, metrics, mock_mode]
+      properties:
+        organization: { type: string }
+        location: { type: string }
+        zone: { type: string }
+        state: { $ref: "#/components/schemas/WorldState" }
+        events:
+          type: array
+          items: { $ref: "#/components/schemas/RealityEvent" }
+        camera: { $ref: "#/components/schemas/CameraStatus" }
+        metrics:
+          type: object
+          required: [active_cameras, objects_tracked, events_today, analyses_today]
+          properties:
+            active_cameras: { type: integer }
+            objects_tracked: { type: integer }
+            events_today: { type: integer }
+            analyses_today: { type: integer }
+        mock_mode: { type: boolean }
 

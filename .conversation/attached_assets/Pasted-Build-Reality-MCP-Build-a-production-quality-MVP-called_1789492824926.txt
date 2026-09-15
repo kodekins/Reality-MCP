@@ -1,0 +1,1363 @@
+Build Reality MCP
+
+Build a production-quality MVP called Reality MCP.
+
+Reality MCP turns any phone, laptop webcam, or eventually CCTV/IP camera into a searchable physical-world sensor that AI assistants such as ChatGPT can query through MCP.
+
+The core concept is:
+
+Camera → Visual Understanding → Structured World State → Temporal Memory → Events → MCP → ChatGPT
+
+This is NOT a normal surveillance dashboard.
+
+The primary product goal is to create a persistent Physical World State Layer for AI agents.
+
+A user should eventually be able to ask ChatGPT things such as:
+
+* What is currently on my desk?
+* How many Coke cans are visible?
+* Where was my laptop last seen?
+* What changed during the last hour?
+* Is anyone waiting at reception?
+* When did this object disappear?
+* Which shelf is low on stock?
+
+For this MVP, focus on browser/mobile camera input and API-based image understanding. Do NOT require a local GPU.
+
+⸻
+
+1. TECH STACK
+
+Use:
+
+Frontend:
+
+* Next.js latest stable
+* TypeScript
+* React
+* Tailwind CSS
+* shadcn/ui
+* Lucide icons
+
+Backend:
+
+* Next.js server routes or a clean Node.js service architecture
+* TypeScript
+
+Database:
+
+* Supabase PostgreSQL
+* Supabase Storage
+* Supabase Realtime
+* pgvector-compatible schema where useful
+
+AI:
+
+* OpenAI vision-capable model through the current official OpenAI API
+* All AI model configuration must use environment variables
+* Do not hardcode a model that may become unavailable
+
+MCP:
+
+* Official Model Context Protocol TypeScript SDK
+* Streamable HTTP MCP transport
+* Remote /mcp endpoint
+
+Deployment:
+
+* Must work as a Replit Deployment
+* Must expose HTTPS
+* Must be usable from an iPhone browser
+* Must expose the MCP endpoint publicly over HTTPS
+
+Do not require:
+
+* CUDA
+* GPU
+* Docker for basic development
+* locally installed computer vision models
+
+Structure the application so GPU/YOLO workers can be added later.
+
+⸻
+
+2. PRODUCT NAME
+
+Use:
+
+Reality
+
+Subtitle:
+
+Give AI eyes into the physical world
+
+Supporting line:
+
+Turn any camera into searchable real-world context for AI agents.
+
+Design should feel like a serious modern AI infrastructure product, not a generic admin template.
+
+Visual inspiration:
+
+* OpenAI
+* Linear
+* Vercel
+* ElevenLabs
+
+Use:
+
+* clean light/dark UI
+* strong typography
+* spacious layouts
+* subtle gradients
+* glass effects only where appropriate
+* smooth micro-animations
+* professional dashboard
+
+Avoid excessive gradients, giant cards, childish icons, and generic AI imagery.
+
+⸻
+
+3. CORE USER FLOW
+
+The MVP onboarding should work as follows:
+
+Step 1
+
+User opens Reality.
+
+Step 2
+
+Create/select a workspace.
+
+For development automatically create:
+
+Workspace:
+Demo Workspace
+
+Step 3
+
+Create location.
+
+Default:
+
+My Office
+
+Step 4
+
+Create camera.
+
+Options:
+
+* Phone Camera
+* Laptop Webcam
+
+Default:
+
+Phone Camera
+
+Step 5
+
+Create a camera zone.
+
+Default:
+
+Desk
+
+Future options should support:
+
+* Shelf
+* Entrance
+* Checkout
+* Reception
+* Waiting Area
+* Warehouse Rack
+* Parking Spot
+
+Step 6
+
+Open camera.
+
+Request browser camera permission using:
+
+navigator.mediaDevices.getUserMedia()
+
+Prefer the rear-facing mobile camera using:
+
+facingMode: "environment"
+
+Allow switching between front/rear camera where supported.
+
+Step 7
+
+Start monitoring.
+
+Capture a still frame periodically.
+
+Default interval:
+
+5 seconds.
+
+Make this configurable:
+
+* 3 seconds
+* 5 seconds
+* 10 seconds
+* 30 seconds
+
+Do NOT stream every video frame to the AI model.
+
+⸻
+
+4. CAMERA PAGE
+
+Route:
+
+/camera
+
+Build an excellent mobile-first camera UI.
+
+It should display:
+
+* live camera preview
+* workspace
+* location
+* camera name
+* active zone
+* LIVE indicator
+* current analysis status
+* last successful scan
+* frames analyzed
+* AI calls made
+* current detected objects
+* Start Monitoring
+* Stop Monitoring
+* Switch Camera
+
+On mobile, the camera preview should dominate the screen.
+
+Camera access must work through HTTPS deployment on Safari and Chrome.
+
+Handle gracefully:
+
+* camera permission denied
+* no camera available
+* unsupported browser
+* network error
+* AI analysis failure
+
+Never crash the UI.
+
+⸻
+
+5. CHANGE DETECTION
+
+Do NOT send every captured frame to OpenAI.
+
+Before the AI request, perform simple browser or server-side frame difference/change detection.
+
+Suggested approach:
+
+* resize images
+* compare current image against previous image
+* compute a lightweight visual difference score
+
+If change is below configurable threshold:
+
+do not invoke AI.
+
+Show:
+
+No meaningful scene change detected.
+
+If meaningful change is detected:
+
+send the frame for semantic analysis.
+
+Include a manual:
+
+Analyze Now
+
+button that bypasses change detection.
+
+⸻
+
+6. VISION ANALYSIS
+
+Create a service:
+
+visionService
+
+The AI should convert the camera frame into structured JSON.
+
+Return approximately this schema:
+
+{
+  "scene_summary": "A desk containing a laptop, mouse and two beverage cans.",
+  "objects": [
+    {
+      "label": "coca cola can",
+      "category": "beverage",
+      "count": 2,
+      "confidence": 0.91,
+      "attributes": {
+        "color": "red"
+      }
+    }
+  ],
+  "people_count": 0,
+  "important_observations": [],
+  "uncertainties": []
+}
+
+Ensure JSON validation with Zod.
+
+Never trust malformed AI output.
+
+If parsing fails:
+
+* retry once
+* otherwise store an analysis failure
+* do not corrupt world state
+
+Use low-cost image detail appropriate for MVP.
+
+Compress and resize images before sending them to AI.
+
+⸻
+
+7. NORMALIZATION
+
+AI labels may differ between scans.
+
+For example:
+
+Coke
+Coca Cola
+Coca-Cola can
+red soda can
+
+Create an object normalization layer.
+
+Store both:
+
+raw_label
+
+and
+
+normalized_label
+
+For MVP use:
+
+* lowercase
+* trim
+* punctuation normalization
+* simple aliases
+
+Example aliases:
+
+{
+  "coke": "coca cola",
+  "coca-cola": "coca cola",
+  "coca cola can": "coca cola"
+}
+
+Design this so semantic normalization can be added later.
+
+⸻
+
+8. WORLD STATE ENGINE
+
+This is the most important architectural component.
+
+Create a service:
+
+worldStateEngine
+
+Its purpose is to transform independent camera analyses into persistent reality.
+
+Do NOT treat images as the main product.
+
+The main product is structured current state.
+
+Example:
+
+{
+  "location": "My Office",
+  "camera": "Phone Camera",
+  "zone": "Desk",
+  "captured_at": "...",
+  "objects": [
+    {
+      "label": "coca cola",
+      "count": 2,
+      "confidence": 0.91
+    },
+    {
+      "label": "laptop",
+      "count": 1,
+      "confidence": 0.98
+    }
+  ]
+}
+
+Maintain:
+
+* current state
+* previous state
+* historical states
+
+When a new state is created, compare it to previous state.
+
+⸻
+
+9. EVENT ENGINE
+
+Automatically generate events when physical state changes.
+
+Supported MVP event types:
+
+* object_appeared
+* object_disappeared
+* object_count_increased
+* object_count_decreased
+* scene_changed
+* person_entered
+* person_left
+* camera_started
+* camera_stopped
+* camera_offline
+
+Example:
+
+Previous:
+
+{
+  "coca cola": 2
+}
+
+Current:
+
+{
+  "coca cola": 1
+}
+
+Generate:
+
+{
+  "event_type": "object_count_decreased",
+  "object": "coca cola",
+  "previous_count": 2,
+  "current_count": 1,
+  "difference": -1,
+  "description": "Coca Cola count decreased from 2 to 1."
+}
+
+Avoid events caused by tiny confidence fluctuations.
+
+Implement basic stability logic.
+
+For example require:
+
+* reasonable confidence
+    or
+* repeated observation
+
+Make thresholds configurable.
+
+⸻
+
+10. DATABASE
+
+Generate the complete Supabase migration/schema.
+
+Create:
+
+organizations
+
+* id UUID PK
+* name
+* created_at
+
+users
+
+* id
+* organization_id
+* email
+* role
+* created_at
+
+locations
+
+* id
+* organization_id
+* name
+* description
+* timezone
+* metadata JSONB
+* created_at
+
+cameras
+
+* id
+* organization_id
+* location_id
+* name
+* camera_type
+* status
+* settings JSONB
+* last_seen_at
+* created_at
+
+Supported types:
+
+* mobile
+* webcam
+* rtsp
+* onvif
+
+RTSP/ONVIF are future functionality only.
+
+zones
+
+* id
+* organization_id
+* camera_id
+* name
+* zone_type
+* polygon_coordinates JSONB
+* metadata JSONB
+* created_at
+
+world_states
+
+* id
+* organization_id
+* location_id
+* camera_id
+* zone_id
+* captured_at
+* scene_summary
+* state JSONB
+* snapshot_url
+* created_at
+
+detected_objects
+
+* id
+* world_state_id
+* raw_label
+* normalized_label
+* category
+* object_count
+* confidence
+* attributes JSONB
+* created_at
+
+events
+
+* id
+* organization_id
+* location_id
+* camera_id
+* zone_id
+* event_type
+* object_label
+* description
+* severity
+* previous_state JSONB
+* current_state JSONB
+* metadata JSONB
+* snapshot_before_url
+* snapshot_after_url
+* started_at
+* ended_at
+* created_at
+
+watches
+
+Future-ready table:
+
+* id
+* organization_id
+* name
+* condition JSONB
+* action JSONB
+* enabled
+* created_at
+
+Add appropriate indexes.
+
+Use UUIDs.
+
+Add updated_at where useful.
+
+Use proper foreign keys.
+
+Prepare schema for Row Level Security even if demo auth is simplified.
+
+⸻
+
+11. DASHBOARD
+
+Route:
+
+/dashboard
+
+Build a beautiful operational dashboard.
+
+Top metrics:
+
+* Active Cameras
+* Objects Currently Tracked
+* Events Today
+* AI Analyses Today
+* Last Scan
+
+Show:
+
+Live State panel
+
+Example:
+
+Desk
+
+* Coca Cola × 2
+* Laptop × 1
+* Mouse × 1
+* Water Bottle × 1
+
+Camera status
+
+* Online
+* Monitoring
+* Last seen
+
+Event timeline
+
+Example:
+
+22:40 — Coca Cola count decreased from 2 to 1
+
+22:37 — Laptop appeared on Desk
+
+22:30 — Monitoring started
+
+Event entries should have:
+
+* timestamp
+* event type icon
+* description
+* zone
+* optional before/after images
+
+Use Supabase Realtime if practical so the dashboard updates without refresh.
+
+⸻
+
+12. EVENT HISTORY
+
+Route:
+
+/events
+
+Support:
+
+* date filtering
+* camera filtering
+* zone filtering
+* event type filtering
+* object search
+
+Allow queries like:
+
+coke
+
+to find events involving Coca Cola.
+
+Display event details.
+
+⸻
+
+13. SEARCH
+
+Route:
+
+/search
+
+Create a simple natural-language-style search experience.
+
+Examples:
+
+* coke
+* laptop
+* what disappeared
+* recent changes
+
+For the MVP perform structured database search.
+
+Architecture should allow embeddings/semantic search later.
+
+⸻
+
+14. MCP SERVER
+
+This part is CRITICAL.
+
+Implement an official Model Context Protocol server using the latest stable MCP TypeScript SDK.
+
+Use:
+
+Streamable HTTP
+
+Expose:
+
+/mcp
+
+The MCP endpoint must work from the public Replit deployment URL.
+
+For example:
+
+https://<deployment>.replit.app/mcp
+
+Also create:
+
+/health
+
+Response:
+
+{
+  "status": "ok",
+  "service": "reality-mcp"
+}
+
+⸻
+
+15. MCP TOOLS
+
+Expose these tools.
+
+get_current_state
+
+Purpose:
+
+Returns current structured state of a location/zone.
+
+Parameters:
+
+* location optional
+* zone optional
+* camera optional
+
+Example ChatGPT question:
+
+What is currently on my desk?
+
+⸻
+
+inspect_zone
+
+Parameters:
+
+* zone
+
+Return:
+
+* objects
+* counts
+* scene summary
+* last analyzed time
+
+Example:
+
+Inspect Desk.
+
+⸻
+
+find_object
+
+Parameters:
+
+* object_name
+
+Search latest states.
+
+Return:
+
+* whether currently visible
+* location
+* zone
+* camera
+* count
+* confidence
+* last seen timestamp
+
+Example:
+
+Where is my laptop?
+
+⸻
+
+count_objects
+
+Parameters:
+
+* object_name
+* zone optional
+
+Example:
+
+How many Coke cans are visible?
+
+⸻
+
+search_events
+
+Parameters:
+
+* query optional
+* object_name optional
+* event_type optional
+* from optional
+* to optional
+* limit
+
+Example:
+
+What changed during the last hour?
+
+⸻
+
+get_recent_changes
+
+Parameters:
+
+* minutes default 60
+
+Return significant state changes.
+
+⸻
+
+get_camera_status
+
+Return current camera connectivity and last-seen information.
+
+⸻
+
+16. MCP RESPONSE QUALITY
+
+Do not return huge internal database records.
+
+Return concise structured content optimized for an LLM.
+
+Example:
+
+{
+  "zone": "Desk",
+  "captured_at": "...",
+  "objects": [
+    {
+      "name": "coca cola",
+      "count": 1
+    },
+    {
+      "name": "laptop",
+      "count": 1
+    }
+  ],
+  "summary": "One Coca Cola can and one laptop are currently visible on Desk."
+}
+
+MCP tools must never leak:
+
+* API keys
+* service role keys
+* internal secrets
+* raw SQL errors
+
+⸻
+
+17. DEMO MODE
+
+Create automatic development seed data.
+
+Organization:
+
+Demo Workspace
+
+Location:
+
+My Office
+
+Camera:
+
+Phone Camera
+
+Zone:
+
+Desk
+
+If no OpenAI key exists, enable a clearly marked MOCK MODE.
+
+Mock mode should simulate states so developers can test:
+
+Camera scan 1:
+
+Coca Cola = 2
+Laptop = 1
+Mouse = 1
+
+Next simulated state:
+
+Coca Cola = 1
+Laptop = 1
+Mouse = 1
+
+This must create a real event:
+
+Coca Cola count decreased from 2 to 1
+
+Therefore the entire system except actual AI vision can be tested without paid APIs.
+
+⸻
+
+18. SETTINGS
+
+Route:
+
+/settings
+
+Allow:
+
+Monitoring interval:
+
+* 3 sec
+* 5 sec
+* 10 sec
+* 30 sec
+
+Change detection:
+
+* enabled
+* disabled
+
+Change sensitivity slider.
+
+Snapshot storage:
+
+* event snapshots only
+* no snapshots
+
+Vision provider status.
+
+MCP status.
+
+Show endpoint:
+
+https://current-domain/mcp
+
+Include:
+
+Copy MCP URL
+
+button.
+
+⸻
+
+19. MCP CONNECTION PAGE
+
+Create:
+
+/connect
+
+This page is specifically designed to help connect Reality with AI clients.
+
+Display:
+
+Reality MCP
+
+Status:
+
+Online
+
+MCP Endpoint:
+
+https://domain/mcp
+
+Health:
+
+Healthy
+
+Available tools:
+
+* get_current_state
+* inspect_zone
+* find_object
+* count_objects
+* search_events
+* get_recent_changes
+* get_camera_status
+
+Include simple instructions:
+
+Use this MCP endpoint when adding Reality to an MCP-compatible AI client.
+
+Do not hardcode instructions that could become outdated.
+
+⸻
+
+20. PRIVACY-FIRST DESIGN
+
+The MVP should NOT record continuous raw video.
+
+By default:
+
+* live video remains in browser
+* selected frames are analyzed
+* world state is stored
+* events are stored
+* optional event snapshots are stored
+
+Do not store every camera frame.
+
+Clearly communicate:
+
+Reality stores structured observations, not continuous video, by default.
+
+Create privacy settings so snapshot storage can be disabled.
+
+This architecture is intentional.
+
+⸻
+
+21. SECURITY
+
+Implement:
+
+* environment secrets
+* server-only Supabase privileged key
+* validation with Zod
+* API rate limiting
+* payload size limits
+* image MIME validation
+* sane image upload limits
+* CORS where needed
+* error sanitization
+
+Never expose service keys client-side.
+
+Never put secrets in source code.
+
+Use Replit Secrets/environment variables.
+
+Required secrets:
+
+OPENAI_API_KEY
+OPENAI_VISION_MODEL
+NEXT_PUBLIC_SUPABASE_URL
+NEXT_PUBLIC_SUPABASE_ANON_KEY
+SUPABASE_SERVICE_ROLE_KEY
+
+Create .env.example.
+
+⸻
+
+22. ARCHITECTURE
+
+Organize code cleanly.
+
+Suggested layout:
+
+src/
+  app/
+    dashboard/
+    camera/
+    events/
+    search/
+    connect/
+    settings/
+    api/
+      analyze/
+      state/
+      events/
+      cameras/
+      health/
+      mcp/
+  components/
+    camera/
+    dashboard/
+    events/
+    ui/
+  lib/
+    supabase/
+    ai/
+    mcp/
+    validation/
+  services/
+    visionService.ts
+    objectNormalizer.ts
+    changeDetector.ts
+    worldStateEngine.ts
+    eventEngine.ts
+    cameraService.ts
+    eventSearchService.ts
+supabase/
+  migrations/
+  seed.sql
+docs/
+  architecture.md
+  mcp.md
+  testing.md
+
+Keep business logic out of React components.
+
+⸻
+
+23. FUTURE ARCHITECTURE
+
+Do not implement these now, but design interfaces so we can later add:
+
+Local vision workers
+
+YOLO
+OpenCV
+ByteTrack
+
+GPU workers
+
+RunPod
+AWS
+GCP
+
+Camera protocols
+
+RTSP
+ONVIF
+
+Physical World Graph
+
+Entities and relationships such as:
+
+person_1
+  near → counter
+box_7
+  located_on → shelf_3
+
+Long-running watches
+
+Example:
+
+Notify me if Coke falls below 5 units.
+
+Edge Gateway
+
+Raw video processed locally while only metadata is sent to cloud.
+
+⸻
+
+24. CRITICAL DESIGN PRINCIPLE
+
+Do NOT build this as:
+
+camera → chatbot
+
+Build it as:
+
+camera
+   ↓
+observation
+   ↓
+normalized objects
+   ↓
+world state
+   ↓
+state comparison
+   ↓
+events
+   ↓
+temporal memory
+   ↓
+Reality MCP
+   ↓
+AI agents
+
+The World State Engine must remain independent of OpenAI.
+
+AI vision is merely one perception provider.
+
+Later we should be able to replace it with:
+
+* YOLO
+* Gemini
+* Claude
+* custom vision model
+* edge inference
+
+without rewriting Reality.
+
+⸻
+
+25. FIRST SUCCESS TEST
+
+After building, autonomously test this exact scenario.
+
+User opens /camera.
+
+Camera shows a desk.
+
+Scene A:
+
+2 beverage cans
+1 laptop
+1 mouse
+
+The app stores current world state.
+
+User removes one beverage can.
+
+Scene B:
+
+1 beverage can
+1 laptop
+1 mouse
+
+The app must:
+
+1. detect a meaningful visual change
+2. analyze new scene
+3. normalize object names
+4. compare world states
+5. generate count-decreased event
+6. update dashboard
+7. expose new state through MCP
+
+Then verify MCP tool:
+
+get_current_state
+
+returns latest state.
+
+Verify:
+
+search_events
+
+returns the count decrease.
+
+Verify:
+
+find_object
+
+can locate the laptop.
+
+⸻
+
+26. REPLIT REQUIREMENTS
+
+This application must run properly inside Replit.
+
+Configure:
+
+* development command
+* production build command
+* production run command
+* deployment port correctly
+* environment secrets
+* public HTTPS deployment
+
+Do not depend on localhost-only URLs.
+
+Use the deployed request host dynamically when displaying the MCP endpoint.
+
+The app must work after clicking Replit Deploy without code edits.
+
+Use one deployment if practical.
+
+Do not create unnecessary microservices for MVP.
+
+⸻
+
+27. QUALITY BAR
+
+Do not stop after generating UI mocks.
+
+Every primary feature must actually work.
+
+Replit Agent should:
+
+1. build application
+2. run database migrations or clearly guide required migration
+3. seed demo data
+4. start application
+5. inspect browser
+6. test camera page where browser permissions permit
+7. test mock mode
+8. test state persistence
+9. test event generation
+10. test dashboard
+11. test MCP endpoint
+12. fix encountered runtime errors
+13. run TypeScript checks
+14. run production build
+
+Do not mark the project complete if TypeScript or production build fails.
+
+⸻
+
+28. README
+
+Create an excellent README containing:
+
+Local/Replit development
+
+Required environment variables
+
+Supabase configuration
+
+OpenAI configuration
+
+Running Mock Mode
+
+Camera testing
+
+iPhone testing
+
+MCP endpoint
+
+Connecting an MCP client
+
+Testing tools manually
+
+Deployment
+
+Architecture
+
+Known MVP limitations
+
+⸻
+
+29. FINAL PRODUCT EXPECTATION
+
+The finished MVP should allow me to:
+
+1. Deploy Reality on Replit.
+2. Open the deployed HTTPS URL on my iPhone.
+3. Allow camera permission.
+4. Point my phone at my desk.
+5. Start monitoring.
+6. Have images periodically analyzed.
+7. See detected objects.
+8. Remove an object.
+9. See Reality detect the state change.
+10. See an event appear on the dashboard.
+11. Access a public /mcp endpoint.
+12. Connect an MCP-compatible AI client.
+13. Ask about the current physical state.
+14. Query recent historical changes.
+
+The MVP is successful when this flow works end-to-end.
+
+Before declaring completion, actually run and test as much of this workflow as the Replit environment permits.
+
+If any implementation choice conflicts with the latest SDK/API documentation, use the latest official documentation rather than blindly following outdated syntax in this prompt.
+
+Build the product now.

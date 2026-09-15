@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Reality"
+description = "A camera-first physical world state layer for AI agents. Monitor spaces, normalize observations into structured state, track changes over time, and expose the latest context through MCP."
+version = "1.0.0"
+id = "artifacts/reality"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 26132
+
+[services.development]
+run = "pnpm --filter @workspace/reality run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/reality", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/reality/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "26132"
+BASE_PATH = "/"
