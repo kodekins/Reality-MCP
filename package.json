@@ -8,14 +8,18 @@
     "dev": "node scripts/dev.mjs",
     "start": "pnpm --filter @workspace/api-server run start",
     "build": "pnpm run typecheck && pnpm -r --if-present run build",
+    "vercel-build": "pnpm --filter @workspace/reality run build && node scripts/prepare-vercel.mjs",
     "typecheck:libs": "tsc --build",
-    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
+    "typecheck:vercel": "tsc -p tsconfig.vercel.json --noEmit",
+    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck && pnpm run typecheck:vercel"
   },
   "private": true,
   "dependencies": {
-    "@replit/connectors-sdk": "^0.4.3"
+    "@replit/connectors-sdk": "^0.4.3",
+    "express": "^5.2.1"
   },
   "devDependencies": {
+    "@types/node": "catalog:",
     "prettier": "^3.9.6",
     "typescript": "~5.9.3"
   }

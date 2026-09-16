@@ -76,8 +76,17 @@ export function CameraPage() {
   const handleAnalysis = (result: { message?: string; changed: boolean }) => { setLastResult(result.message ?? (result.changed ? 'A change was detected.' : 'No change detected.')); void queryClient.invalidateQueries({ queryKey: getGetCurrentRealityStateQueryKey() }); void queryClient.invalidateQueries({ queryKey: getGetRealityOverviewQueryKey() }); };
   const analyzeFrame = () => {
     const video = videoRef.current;
-    if (permission === 'granted' && video && video.videoWidth) { const canvas = document.createElement('canvas'); canvas.width = video.videoWidth; canvas.height = video.videoHeight; canvas.getContext('2d')?.drawImage(video, 0, 0); analyze.mutate({ data: { image_data: canvas.toDataURL('image/jpeg', .72) } }, { onSuccess: handleAnalysis }); }
-    else analyze.mutate({ data: {} }, { onSuccess: handleAnalysis });
+    if (permission === 'granted' && video && video.videoWidth) {
+      const canvas = document.createElement('canvas');
+      const scale = Math.min(1, 1280 / video.videoWidth);
+      canvas.width = Math.round(video.videoWidth * scale);
+      canvas.height = Math.round(video.videoHeight * scale);
+      canvas.getContext('2d')?.drawImage(video, 0, 0, canvas.width, canvas.height);
+      analyze.mutate(
+        { data: { image_data: canvas.toDataURL('image/jpeg', .7) } },
+        { onSuccess: handleAnalysis },
+      );
+    } else analyze.mutate({ data: {} }, { onSuccess: handleAnalysis });
   };
   useEffect(() => {
     if (!monitoring) return;

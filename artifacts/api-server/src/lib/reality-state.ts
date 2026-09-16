@@ -107,6 +107,18 @@ let settings: RealitySettings = {
 
 type PersistedRow = Record<string, unknown>;
 
+let initializationPromise: Promise<boolean> | undefined;
+
+export function initializeRealityStateOnce() {
+  if (!initializationPromise) {
+    initializationPromise = initializeRealityState().catch((error) => {
+      initializationPromise = undefined;
+      throw error;
+    });
+  }
+  return initializationPromise;
+}
+
 export async function initializeRealityState() {
   if (getSupabaseMode() === "unconfigured") return false;
 
