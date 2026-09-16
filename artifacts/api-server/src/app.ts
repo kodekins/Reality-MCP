@@ -1,10 +1,13 @@
 import express, { type Express } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
+import path from "node:path";
+import { existsSync } from "node:fs";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { handleRealityMcpRequest } from "./lib/mcp-http";
 import { realityMcpToolNames } from "./lib/reality-mcp";
+import { getSupabaseMode } from "./lib/supabase-reality";
 
 const app: Express = express();
 
@@ -27,14 +30,23 @@ app.use(
     },
   }),
 );
-app.use(cors());
-app.use(express.json());
+const allowedOrigins = process.env.CORS_ORIGINS?.split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+app.use(cors(allowedOrigins?.length ? { origin: allowedOrigins } : undefined));
+app.use(express.json({ limit: "8mb" }));
 app.use(express.urlencoded({ extended: true }));
 
 app.use("/api", router);
 
 app.get("/health", (_req, res) => {
-  res.json({ status: "ok", service: "reality-mcp" });
+  res.json({
+    status: "ok",
+    service: "reality-mcp",
+    supabase: getSupabaseMode(),
+    vision: process.env.GEMINI_API_KEY ? "gemini" : "mock",
+  });
 });
 
 app.get("/mcp-info", (_req, res) => {
@@ -44,7 +56,7 @@ app.get("/mcp-info", (_req, res) => {
     transport: "streamable-http",
     endpoint: "/mcp",
     authentication: "none",
-    data_source: "Supabase via Replit connector",
+    data_source: getSupabaseMode(),
     tools: realityMcpToolNames,
   });
 });
@@ -52,5 +64,30 @@ app.get("/mcp-info", (_req, res) => {
 app.all("/mcp", (req, res, next) => {
   void handleRealityMcpRequest(req, res).catch(next);
 });
+
+const webDist = path.resolve(
+  process.env.WEB_DIST_DIR ??
+    path.join(process.cwd(), "artifacts/reality/dist/public"),
+);
+if (existsSync(webDist)) {
+  app.use(express.static(webDist));
+  app.get("/{*path}", (_req, res) =>
+    res.sendFile(path.join(webDist, "index.html")),
+  );
+}
+
+app.use(
+  (
+    error: unknown,
+    _req: express.Request,
+    res: express.Response,
+    _next: express.NextFunction,
+  ) => {
+    logger.error({ err: error }, "Unhandled request error");
+    if (!res.headersSent) {
+      res.status(500).json({ error: "Internal server error" });
+    }
+  },
+);
 
 export default app;

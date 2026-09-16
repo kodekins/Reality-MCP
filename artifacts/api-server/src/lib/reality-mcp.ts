@@ -22,15 +22,23 @@ function json(value: unknown, isError = false) {
 
 function describeError(error: unknown) {
   if (error instanceof SupabaseRealityError) {
+    const isUnconfigured =
+      error.status === 503 &&
+      typeof error.body === "object" &&
+      error.body !== null &&
+      (error.body as Row).code === "SUPABASE_NOT_CONFIGURED";
     return {
       source: "supabase",
       available: false,
       error: {
-        code: "SUPABASE_QUERY_FAILED",
+        code: isUnconfigured
+          ? "SUPABASE_NOT_CONFIGURED"
+          : "SUPABASE_QUERY_FAILED",
         status: error.status,
         detail: error.body,
-        message:
-          "Reality could not read its Supabase tables. Apply the Reality schema migration and check the connection permissions.",
+        message: isUnconfigured
+          ? "Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY on the API server before using Reality MCP."
+          : "Reality could not read its Supabase tables. Apply the Reality schema migration and check the connection permissions.",
       },
     };
   }
@@ -39,7 +47,8 @@ function describeError(error: unknown) {
     available: false,
     error: {
       code: "SUPABASE_QUERY_FAILED",
-      message: error instanceof Error ? error.message : "Unknown Supabase error.",
+      message:
+        error instanceof Error ? error.message : "Unknown Supabase error.",
     },
   };
 }
@@ -87,7 +96,8 @@ async function currentState(args: { camera_id?: string; zone_id?: string }) {
       zone_id: row.zone_id,
       captured_at: row.captured_at,
       summary: row.scene_summary,
-      people_count: typeof state.people_count === "number" ? state.people_count : 0,
+      people_count:
+        typeof state.people_count === "number" ? state.people_count : 0,
       objects: objects.map((object) => ({
         name: object.normalized_label ?? object.raw_label,
         category: object.category,
@@ -117,7 +127,10 @@ export function createRealityMcpServer() {
       description:
         "Read the latest persisted world state and detected objects from Supabase.",
       inputSchema: {
-        camera_id: z.string().optional().describe("Optional Supabase camera id."),
+        camera_id: z
+          .string()
+          .optional()
+          .describe("Optional Supabase camera id."),
         zone_id: z.string().optional().describe("Optional Supabase zone id."),
       },
     },
@@ -180,26 +193,48 @@ export function createRealityMcpServer() {
       inputSchema: {
         object_name: z.string().min(1).describe("Object label to search for."),
         zone_id: z.string().optional().describe("Optional Supabase zone id."),
-        limit: z.number().int().min(1).max(100).optional().describe("Maximum matches."),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(100)
+          .optional()
+          .describe("Maximum matches."),
       },
     },
     async (args) => {
       const result = await withDatabase(async () => {
-        const rows = await readRealityTable<Row>("detected_objects", {
+        const params: Record<string, string> = {
           select:
             "id,world_state_id,raw_label,normalized_label,category,object_count,confidence,attributes,created_at",
           normalized_label: `ilike.*${args.object_name}*`,
           order: "created_at.desc",
           limit: String(args.limit ?? 25),
-        });
+        };
+        if (args.zone_id) {
+          const states = await readRealityTable<Row>("world_states", {
+            select: "id",
+            zone_id: `eq.${args.zone_id}`,
+            order: "captured_at.desc",
+            limit: "250",
+          });
+          const ids = states.map((row) => String(row.id)).filter(Boolean);
+          if (!ids.length) {
+            return {
+              source: "supabase",
+              available: true,
+              object_name: args.object_name,
+              matches: [],
+            };
+          }
+          params.world_state_id = `in.(${ids.join(",")})`;
+        }
+        const rows = await readRealityTable<Row>("detected_objects", params);
         return {
           source: "supabase",
           available: true,
           object_name: args.object_name,
           matches: rows,
-          note: args.zone_id
-            ? "zone_id filtering is applied by the world-state relationship when the zone is inspected."
-            : undefined,
         };
       });
       return result.error ? json(result.error, true) : json(result.value);
@@ -213,23 +248,35 @@ export function createRealityMcpServer() {
       description:
         "Count persisted object detections, optionally filtered by normalized label and category.",
       inputSchema: {
-        object_name: z.string().optional().describe("Optional normalized label."),
+        object_name: z
+          .string()
+          .optional()
+          .describe("Optional normalized label."),
         category: z.string().optional().describe("Optional object category."),
-        limit: z.number().int().min(1).max(1000).optional().describe("Rows to aggregate."),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(1000)
+          .optional()
+          .describe("Rows to aggregate."),
       },
     },
     async (args) => {
       const result = await withDatabase(async () => {
         const params: Record<string, string> = {
-          select: "normalized_label,category,object_count,confidence,created_at",
+          select:
+            "normalized_label,category,object_count,confidence,created_at",
           order: "created_at.desc",
           limit: String(args.limit ?? 250),
         };
-        if (args.object_name) params.normalized_label = `ilike.*${args.object_name}*`;
+        if (args.object_name)
+          params.normalized_label = `ilike.*${args.object_name}*`;
         if (args.category) params.category = `eq.${args.category}`;
         const rows = await readRealityTable<Row>("detected_objects", params);
         const total = rows.reduce(
-          (sum, row) => sum + (typeof row.object_count === "number" ? row.object_count : 0),
+          (sum, row) =>
+            sum + (typeof row.object_count === "number" ? row.object_count : 0),
           0,
         );
         return {
@@ -251,10 +298,19 @@ export function createRealityMcpServer() {
       description:
         "Search persisted event descriptions and object labels in Supabase.",
       inputSchema: {
-        query: z.string().optional().describe("Text in an event description or object label."),
+        query: z
+          .string()
+          .optional()
+          .describe("Text in an event description or object label."),
         event_type: z.string().optional().describe("Exact event type filter."),
         severity: z.string().optional().describe("Exact severity filter."),
-        limit: z.number().int().min(1).max(100).optional().describe("Maximum events."),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(100)
+          .optional()
+          .describe("Maximum events."),
       },
     },
     async (args) => {
@@ -285,7 +341,13 @@ export function createRealityMcpServer() {
       description:
         "Return the most recent persisted physical-world changes from Supabase.",
       inputSchema: {
-        limit: z.number().int().min(1).max(100).optional().describe("Maximum events."),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(100)
+          .optional()
+          .describe("Maximum events."),
       },
     },
     async (args) => {
@@ -310,7 +372,10 @@ export function createRealityMcpServer() {
       description:
         "Read persisted camera status and the latest observation timestamp from Supabase.",
       inputSchema: {
-        camera_id: z.string().optional().describe("Optional Supabase camera id."),
+        camera_id: z
+          .string()
+          .optional()
+          .describe("Optional Supabase camera id."),
       },
     },
     async (args) => {
@@ -318,7 +383,9 @@ export function createRealityMcpServer() {
         const camera = await readRealityRow<Row>("cameras", {
           select:
             "id,name,camera_type,status,last_seen_at,settings,created_at,updated_at",
-          ...(args.camera_id ? { id: `eq.${args.camera_id}` } : { order: "created_at.asc" }),
+          ...(args.camera_id
+            ? { id: `eq.${args.camera_id}` }
+            : { order: "created_at.asc" }),
         });
         if (!camera) {
           return {
@@ -336,7 +403,10 @@ export function createRealityMcpServer() {
         return {
           source: "supabase",
           available: true,
-          camera: { ...camera, latest_observation_at: latest?.captured_at ?? null },
+          camera: {
+            ...camera,
+            latest_observation_at: latest?.captured_at ?? null,
+          },
         };
       });
       return result.error ? json(result.error, true) : json(result.value);

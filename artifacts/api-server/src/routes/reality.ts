@@ -12,6 +12,7 @@ import {
 } from "@workspace/api-zod";
 import {
   analyzeFrame,
+  analyzeMock,
   getCamera,
   getEvents,
   getOverview,
@@ -62,15 +63,18 @@ router.post("/analyze", (req, res) => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  if (!parsed.data.image_data) {
-    res.status(400).json({ error: "A live camera image is required. Mock analysis is disabled." });
-    return;
-  }
-  void analyzeFrame(parsed.data.image_data)
+  const analysis =
+    parsed.data.image_data && process.env.GEMINI_API_KEY
+      ? analyzeFrame(parsed.data.image_data)
+      : analyzeMock();
+  void analysis
     .then((result) => res.json(result))
     .catch((error: unknown) => {
       res.status(503).json({
-        error: error instanceof Error ? error.message : "Live vision analysis failed.",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Live vision analysis failed.",
       });
     });
 });

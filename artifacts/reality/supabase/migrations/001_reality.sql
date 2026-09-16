@@ -1,7 +1,15 @@
-  
+create extension if not exists pgcrypto;
+
+create table if not exists organizations (
+  id uuid primary key default gen_random_uuid(),
+  name text not null unique,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
 
 create table if not exists users (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references organizations(id) on delete cascade,
   email text not null,
   role text not null default 'member',
@@ -9,18 +17,19 @@ create table if not exists users (
 );
 
 create table if not exists locations (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references organizations(id) on delete cascade,
   name text not null,
   description text,
   timezone text not null default 'UTC',
   metadata jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  unique (organization_id, name)
 );
 
 create table if not exists cameras (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references organizations(id) on delete cascade,
   location_id uuid not null references locations(id) on delete cascade,
   name text not null,
@@ -29,22 +38,24 @@ create table if not exists cameras (
   settings jsonb not null default '{}'::jsonb,
   last_seen_at timestamptz,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  unique (organization_id, name)
 );
 
 create table if not exists zones (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references organizations(id) on delete cascade,
   camera_id uuid not null references cameras(id) on delete cascade,
   name text not null,
   zone_type text not null default 'desk',
   polygon_coordinates jsonb,
   metadata jsonb not null default '{}'::jsonb,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  unique (camera_id, name)
 );
 
 create table if not exists world_states (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references organizations(id) on delete cascade,
   location_id uuid not null references locations(id) on delete cascade,
   camera_id uuid not null references cameras(id) on delete cascade,
@@ -57,7 +68,7 @@ create table if not exists world_states (
 );
 
 create table if not exists detected_objects (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   world_state_id uuid not null references world_states(id) on delete cascade,
   raw_label text not null,
   normalized_label text not null,
@@ -69,7 +80,7 @@ create table if not exists detected_objects (
 );
 
 create table if not exists events (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references organizations(id) on delete cascade,
   location_id uuid references locations(id) on delete set null,
   camera_id uuid references cameras(id) on delete set null,
@@ -89,7 +100,7 @@ create table if not exists events (
 );
 
 create table if not exists watches (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references organizations(id) on delete cascade,
   name text not null,
   condition jsonb not null default '{}'::jsonb,
@@ -103,3 +114,15 @@ create index if not exists detected_objects_normalized_label_idx on detected_obj
 create index if not exists events_created_at_idx on events(created_at desc);
 create index if not exists events_object_label_idx on events(object_label);
 create index if not exists cameras_status_idx on cameras(status);
+
+alter table organizations enable row level security;
+alter table users enable row level security;
+alter table locations enable row level security;
+alter table cameras enable row level security;
+alter table zones enable row level security;
+alter table world_states enable row level security;
+alter table detected_objects enable row level security;
+alter table events enable row level security;
+alter table watches enable row level security;
+
+comment on table world_states is 'Structured Reality observations. Access through the server with a Supabase service-role key.';
