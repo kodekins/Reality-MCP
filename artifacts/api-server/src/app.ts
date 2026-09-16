@@ -7,6 +7,7 @@ import router from "./routes";
 import { logger } from "./lib/logger";
 import { handleRealityMcpRequest } from "./lib/mcp-http";
 import { realityMcpToolNames } from "./lib/reality-mcp";
+import { initializeRealityStateOnce } from "./lib/reality-state";
 import { getSupabaseMode } from "./lib/supabase-reality";
 
 const app: Express = express();
@@ -37,6 +38,18 @@ const allowedOrigins = process.env.CORS_ORIGINS?.split(",")
 app.use(cors(allowedOrigins?.length ? { origin: allowedOrigins } : undefined));
 app.use(express.json({ limit: "8mb" }));
 app.use(express.urlencoded({ extended: true }));
+
+app.use((_req, _res, next) => {
+  void initializeRealityStateOnce()
+    .then(() => next())
+    .catch((error: unknown) => {
+      logger.warn(
+        { err: error },
+        "Could not load Reality state from Supabase; using demo state",
+      );
+      next();
+    });
+});
 
 app.use("/api", router);
 
@@ -69,7 +82,9 @@ const webDist = path.resolve(
   process.env.WEB_DIST_DIR ??
     path.join(process.cwd(), "artifacts/reality/dist/public"),
 );
-if (existsSync(webDist)) {
+if (process.env.VERCEL) {
+  app.get("/{*path}", (_req, res) => res.redirect(307, "/index.html"));
+} else if (existsSync(webDist)) {
   app.use(express.static(webDist));
   app.get("/{*path}", (_req, res) =>
     res.sendFile(path.join(webDist, "index.html")),

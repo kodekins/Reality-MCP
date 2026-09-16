@@ -41,6 +41,22 @@ curl https://YOUR_HOST/mcp-info
 
 Use `https://YOUR_HOST/mcp` in a Streamable HTTP MCP client.
 
+## Deploy to Vercel
+
+1. Import this repository into Vercel and leave the Root Directory set to the repository root.
+2. Add `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` under Project Settings → Environment Variables. Add `GEMINI_API_KEY` if you want live vision analysis.
+3. Apply `artifacts/reality/supabase/migrations/001_reality.sql` in the Supabase SQL Editor.
+4. Deploy. Vercel runs `pnpm run vercel-build`, serves the frontend from `public`, and exposes the Express API as a function.
+
+Your MCP URL is `https://YOUR_PROJECT.vercel.app/mcp`. You do not need to set `PORT`, `API_URL`, `BASE_PATH`, or `VITE_MCP_URL` for a same-origin Vercel deployment. Set `CORS_ORIGINS` only when a browser hosted on another origin must call the API.
+
+After deployment, verify:
+
+```bash
+curl https://YOUR_PROJECT.vercel.app/health
+curl https://YOUR_PROJECT.vercel.app/mcp-info
+```
+
 ## Main endpoints
 
 - `GET /health` — runtime and integration mode

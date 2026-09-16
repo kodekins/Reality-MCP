@@ -8,8 +8,10 @@
     "dev": "node scripts/dev.mjs",
     "start": "pnpm --filter @workspace/api-server run start",
     "build": "pnpm run typecheck && pnpm -r --if-present run build",
+    "vercel-build": "pnpm --filter @workspace/reality run build && node scripts/prepare-vercel.mjs",
     "typecheck:libs": "tsc --build",
-    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
+    "typecheck:vercel": "tsc -p tsconfig.vercel.json --noEmit",
+    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck && pnpm run typecheck:vercel"
   },
   "private": true,
   "dependencies": {

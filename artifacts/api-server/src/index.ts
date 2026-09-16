@@ -1,6 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
-import { initializeRealityState } from "./lib/reality-state";
+import { initializeRealityStateOnce } from "./lib/reality-state";
 
 const rawPort = process.env["PORT"] ?? "8080";
 
@@ -11,7 +11,7 @@ if (Number.isNaN(port) || port <= 0) {
 }
 
 try {
-  const hydrated = await initializeRealityState();
+  const hydrated = await initializeRealityStateOnce();
   if (hydrated) logger.info("Loaded latest Reality state from Supabase");
 } catch (error) {
   logger.warn(
