@@ -1,13 +1,4 @@
--- Reality MVP schema. The Replit demo uses the in-process mock store when no
--- external Supabase connection is configured; these tables are the production
--- persistence contract for a Supabase/Postgres deployment.
-create extension if not exists "uuid-ossp";
-
-create table if not exists organizations (
-  id uuid primary key default uuid_generate_v4(),
-  name text not null,
-  created_at timestamptz not null default now()
-);
+  
 
 create table if not exists users (
   id uuid primary key default uuid_generate_v4(),
