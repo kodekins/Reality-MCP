@@ -1,18 +1,23 @@
 import app from "./app";
 import { logger } from "./lib/logger";
+import { initializeRealityState } from "./lib/reality-state";
 
-const rawPort = process.env["PORT"];
-
-if (!rawPort) {
-  throw new Error(
-    "PORT environment variable is required but was not provided.",
-  );
-}
+const rawPort = process.env["PORT"] ?? "8080";
 
 const port = Number(rawPort);
 
 if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
+}
+
+try {
+  const hydrated = await initializeRealityState();
+  if (hydrated) logger.info("Loaded latest Reality state from Supabase");
+} catch (error) {
+  logger.warn(
+    { err: error },
+    "Could not load Reality state from Supabase; using demo state",
+  );
 }
 
 app.listen(port, (err) => {

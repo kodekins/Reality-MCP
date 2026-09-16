@@ -1,6 +1,9 @@
 import { ReplitConnectors } from "@replit/connectors-sdk";
 
 type JsonRecord = Record<string, unknown>;
+type SupabaseRequestInit = Omit<RequestInit, "headers"> & {
+  headers?: Record<string, string>;
+};
 
 export type SupabaseRealityContext = {
   organizationId: string;
@@ -20,8 +23,57 @@ export class SupabaseRealityError extends Error {
   }
 }
 
-function connector() {
-  return new ReplitConnectors();
+function directSupabaseConfig() {
+  const url = process.env.SUPABASE_URL?.replace(/\/$/, "");
+  const key =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ??
+    process.env.SUPABASE_SECRET_KEY ??
+    process.env.SUPABASE_KEY;
+  return url && key ? { url, key } : null;
+}
+
+export function getSupabaseMode() {
+  if (directSupabaseConfig()) return "direct" as const;
+  if (process.env.REPL_ID || process.env.REPLIT_DEPLOYMENT)
+    return "replit-connector" as const;
+  return "unconfigured" as const;
+}
+
+async function supabaseFetch(
+  pathname: string,
+  init: SupabaseRequestInit,
+): Promise<Response> {
+  const config = directSupabaseConfig();
+  if (config) {
+    return fetch(`${config.url}${pathname}`, {
+      ...init,
+      headers: {
+        apikey: config.key,
+        Authorization: `Bearer ${config.key}`,
+        ...init.headers,
+      },
+    });
+  }
+
+  if (process.env.REPL_ID || process.env.REPLIT_DEPLOYMENT) {
+    return new ReplitConnectors().proxy("supabase", pathname, init);
+  }
+
+  throw new SupabaseRealityError(
+    "Supabase is not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.",
+    503,
+    { code: "SUPABASE_NOT_CONFIGURED" },
+  );
+}
+
+async function readBody(response: Response): Promise<unknown> {
+  const text = await response.text();
+  if (!text) return null;
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return text;
+  }
 }
 
 async function request<T>(
@@ -29,15 +81,14 @@ async function request<T>(
   searchParams: Record<string, string> = {},
 ): Promise<T[]> {
   const query = new URLSearchParams(searchParams);
-  const response = await connector().proxy(
-    "supabase",
+  const response = await supabaseFetch(
     `/rest/v1/${table}?${query.toString()}`,
     {
       method: "GET",
       headers: { Accept: "application/json" },
     },
   );
-  const body = await response.json().catch(async () => await response.text());
+  const body = await readBody(response);
   if (!response.ok) {
     throw new SupabaseRealityError(
       `Supabase query failed for ${table}.`,
@@ -52,20 +103,16 @@ async function insert<T extends JsonRecord>(
   table: string,
   rows: T | T[],
 ): Promise<JsonRecord[]> {
-  const response = await connector().proxy(
-    "supabase",
-    `/rest/v1/${table}`,
-    {
-      method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-        Prefer: "return=representation",
-      },
-      body: JSON.stringify(rows),
+  const response = await supabaseFetch(`/rest/v1/${table}`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Prefer: "return=representation",
     },
-  );
-  const body = await response.json().catch(async () => await response.text());
+    body: JSON.stringify(rows),
+  });
+  const body = await readBody(response);
   if (!response.ok) {
     throw new SupabaseRealityError(
       `Supabase insert failed for ${table}.`,
@@ -74,6 +121,34 @@ async function insert<T extends JsonRecord>(
     );
   }
   return Array.isArray(body) ? (body as JsonRecord[]) : [];
+}
+
+async function update(
+  table: string,
+  searchParams: Record<string, string>,
+  values: JsonRecord,
+): Promise<void> {
+  const query = new URLSearchParams(searchParams);
+  const response = await supabaseFetch(
+    `/rest/v1/${table}?${query.toString()}`,
+    {
+      method: "PATCH",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        Prefer: "return=minimal",
+      },
+      body: JSON.stringify(values),
+    },
+  );
+  if (!response.ok) {
+    const body = await readBody(response);
+    throw new SupabaseRealityError(
+      `Supabase update failed for ${table}.`,
+      response.status,
+      body,
+    );
+  }
 }
 
 async function first<T>(
@@ -228,6 +303,15 @@ export async function persistRealityObservation(
       created_at: event.created_at,
     });
   }
+  await update(
+    "cameras",
+    { id: `eq.${context.cameraId}` },
+    {
+      status: "online",
+      last_seen_at: observation.captured_at,
+      updated_at: observation.captured_at,
+    },
+  );
   return context;
 }
 
