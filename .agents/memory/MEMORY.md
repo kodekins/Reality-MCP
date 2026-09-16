@@ -1,1 +1,2 @@
 - [Reality demo mode](reality-demo-mode.md) — the MVP uses an in-process mock perception store so the full observation-to-event-to-MCP path works without paid vision credentials.
+- [Reality live MCP and persistence](reality-live-mcp.md) — production MCP requires the published HTTPS URL and provisioned Supabase schema; never expose preview-auth or mock data.

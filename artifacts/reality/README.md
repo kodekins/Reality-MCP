@@ -5,10 +5,10 @@ Reality turns a phone or webcam into searchable physical-world context for AI ag
 ## Current MVP
 
 - Camera-first `/camera` flow with browser permission handling and front/rear switching.
-- Mock mode when no vision provider is configured. Each analysis alternates the desk between two and one Coca Cola can, creating a real count-decreased event.
+- Live browser camera analysis through Gemini vision. Reality does not fabricate objects when the camera or vision provider is unavailable.
 - Dashboard, event history, structured search, MCP connection page, and monitoring/privacy settings.
 - Shared API contract in `lib/api-spec/openapi.yaml`.
-- Public `GET /health` and `GET/POST /mcp` endpoints routed through the API service.
+- Public `GET /health`, `GET /mcp-info`, and Streamable HTTP `/mcp` endpoints routed through the API service.
 - Production-ready Supabase/Postgres schema in `supabase/migrations/001_reality.sql`.
 
 ## Privacy
@@ -21,4 +21,6 @@ Use the deployed HTTPS URL with `/mcp`. The endpoint exposes:
 
 `get_current_state`, `inspect_zone`, `find_object`, `count_objects`, `search_events`, `get_recent_changes`, and `get_camera_status`.
 
-The local demo server uses a mock perception provider. To connect a real vision provider, implement the `visionService` boundary and supply provider configuration through Replit Secrets; no secret belongs in source code or client bundles.
+The camera route requires a real captured image and `GEMINI_API_KEY` in Replit Secrets. No secret belongs in source code or client bundles. The MCP route reads persisted Supabase tables and returns an explicit schema error until the migration has been applied.
+
+Before using MCP with Claude, run `supabase/migrations/001_reality.sql` in the connected Supabase project's SQL Editor. Then publish the app and give Claude the published URL ending in `/mcp` (not the Replit preview URL).

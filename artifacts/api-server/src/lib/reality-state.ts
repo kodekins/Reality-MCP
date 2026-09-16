@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { persistRealityObservation } from "./supabase-reality";
 
 export type RealityObject = {
   name: string;
@@ -47,49 +48,25 @@ export type RealitySettings = {
 };
 
 let state: WorldState = {
-  location: "My Office",
-  camera: "Phone Camera",
-  zone: "Desk",
-  captured_at: new Date(Date.now() - 1000 * 60 * 4).toISOString(),
-  summary: "A desk with a laptop, mouse, and two beverage cans.",
-  objects: [
-    { name: "coca cola", category: "beverage", count: 2, confidence: 0.96, color: "red" },
-    { name: "laptop", category: "electronics", count: 1, confidence: 0.99, color: "silver" },
-    { name: "mouse", category: "electronics", count: 1, confidence: 0.97, color: "black" },
-    { name: "water bottle", category: "beverage", count: 1, confidence: 0.92, color: "clear" },
-  ],
+  location: "Live Location",
+  camera: "Device Camera",
+  zone: "Current Frame",
+  captured_at: "",
+  summary: "No camera frame has been analyzed yet.",
+  objects: [],
   people_count: 0,
 };
 
-let events: RealityEvent[] = [
-  {
-    id: randomUUID(),
-    event_type: "camera_started",
-    object_name: null,
-    description: "Monitoring started on Phone Camera.",
-    zone: "Desk",
-    severity: "info",
-    created_at: new Date(Date.now() - 1000 * 60 * 18).toISOString(),
-  },
-  {
-    id: randomUUID(),
-    event_type: "object_appeared",
-    object_name: "laptop",
-    description: "Laptop appeared on Desk.",
-    zone: "Desk",
-    severity: "info",
-    created_at: new Date(Date.now() - 1000 * 60 * 27).toISOString(),
-  },
-];
+let events: RealityEvent[] = [];
 
 let camera: CameraStatus = {
   name: "Phone Camera",
   type: "mobile",
-  status: "online",
-  last_seen_at: state.captured_at,
-  frames_analyzed: 12,
-  ai_calls: 4,
-  mode: process.env.OPENAI_API_KEY ? "vision" : "mock",
+  status: "offline",
+  last_seen_at: null,
+  frames_analyzed: 0,
+  ai_calls: 0,
+  mode: process.env.GEMINI_API_KEY ? "vision" : "vision unavailable",
 };
 
 let settings: RealitySettings = {
@@ -97,7 +74,7 @@ let settings: RealitySettings = {
   change_detection_enabled: true,
   sensitivity: 0.18,
   snapshot_policy: "events_only",
-  vision_provider: process.env.OPENAI_API_KEY ? "OpenAI vision" : "Mock mode",
+  vision_provider: process.env.GEMINI_API_KEY ? "Gemini vision" : "Not configured",
 };
 
 export function getOverview() {
@@ -147,6 +124,87 @@ export function updateSettings(next: Partial<RealitySettings>) {
 function normalizeLabel(label: string) {
   const normalized = label.toLowerCase().trim().replace(/[^\w\s]/g, "");
   return { coke: "coca cola", "coca cola can": "coca cola", "coca cola": "coca cola" }[normalized] ?? normalized;
+}
+
+function cleanModelJson(text: string) {
+  const withoutFence = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+  const start = withoutFence.indexOf("{");
+  const end = withoutFence.lastIndexOf("}");
+  return start >= 0 && end > start ? withoutFence.slice(start, end + 1) : withoutFence;
+}
+
+function clampConfidence(value: unknown) {
+  const numeric = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(numeric) ? Math.min(1, Math.max(0, numeric)) : 0.5;
+}
+
+async function analyzeWithGemini(imageData: string) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error("Live vision is not configured. Add GEMINI_API_KEY in Replit Secrets.");
+  }
+  const match = imageData.match(/^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i);
+  if (!match) throw new Error("The camera frame must be a base64 image data URL.");
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              {
+                inline_data: { mime_type: match[1], data: match[2] },
+              },
+              {
+                text:
+                  "Analyze this camera frame for a physical-world monitoring system. Return only JSON with this exact shape: {\"summary\":\"short factual scene description\",\"people_count\":0,\"objects\":[{\"name\":\"normalized object label\",\"category\":\"category\",\"count\":1,\"confidence\":0.0,\"color\":\"optional color or null\"}]}. Do not identify people or infer identity. Only include visible objects and use confidence from 0 to 1.",
+              },
+            ],
+          },
+        ],
+        generationConfig: {
+          temperature: 0.1,
+          responseMimeType: "application/json",
+        },
+      }),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`Gemini vision request failed with status ${response.status}.`);
+  }
+  const payload = (await response.json()) as {
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+  };
+  const text = payload.candidates?.[0]?.content?.parts?.map((part) => part.text ?? "").join("") ?? "";
+  const parsed = JSON.parse(cleanModelJson(text)) as {
+    summary?: unknown;
+    people_count?: unknown;
+    objects?: Array<Record<string, unknown>>;
+  };
+  return {
+    summary: typeof parsed.summary === "string" ? parsed.summary.slice(0, 500) : "Visible scene analyzed.",
+    people_count:
+      typeof parsed.people_count === "number" && parsed.people_count >= 0
+        ? Math.floor(parsed.people_count)
+        : 0,
+    objects: Array.isArray(parsed.objects)
+      ? parsed.objects
+          .filter((object) => typeof object.name === "string" && object.name.trim())
+          .slice(0, 50)
+          .map((object) => ({
+            name: normalizeLabel(String(object.name)),
+            category: typeof object.category === "string" ? object.category : "other",
+            count:
+              typeof object.count === "number" && object.count > 0
+                ? Math.floor(object.count)
+                : 1,
+            confidence: clampConfidence(object.confidence),
+            color: typeof object.color === "string" ? object.color : null,
+          }))
+      : [],
+  };
 }
 
 function detectChange(previous: WorldState, next: WorldState) {
@@ -209,6 +267,50 @@ export function analyzeMock() {
     analyzed: true,
     changed: Boolean(event),
     message: event ? "Scene analyzed and a meaningful change was recorded." : "Scene analyzed. No meaningful state change detected.",
+    state: next,
+    event,
+  };
+}
+
+export async function analyzeFrame(imageData: string) {
+  const previous = state;
+  const vision = await analyzeWithGemini(imageData);
+  const next: WorldState = {
+    ...previous,
+    captured_at: new Date().toISOString(),
+    summary: vision.summary,
+    objects: vision.objects,
+    people_count: vision.people_count,
+  };
+  const change = detectChange(previous, next);
+  const event = change
+    ? {
+        id: randomUUID(),
+        event_type: change.event_type,
+        object_name: change.object_name,
+        description: change.description,
+        zone: next.zone,
+        severity: "info",
+        created_at: next.captured_at,
+      }
+    : null;
+  await persistRealityObservation(next, event);
+  state = next;
+  camera = {
+    ...camera,
+    status: "online",
+    last_seen_at: next.captured_at,
+    frames_analyzed: camera.frames_analyzed + 1,
+    ai_calls: camera.ai_calls + 1,
+    mode: "vision",
+  };
+  if (event) events = [event, ...events];
+  return {
+    analyzed: true,
+    changed: Boolean(event),
+    message: event
+      ? "Live camera frame analyzed and a meaningful change was recorded."
+      : "Live camera frame analyzed. No meaningful state change detected.",
     state: next,
     event,
   };

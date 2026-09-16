@@ -77,7 +77,7 @@ export function RealityShell({ children }: { children: ReactNode }) {
               <span className="size-1.5 animate-pulse-dot rounded-full bg-sidebar-primary" />
               <span>Site is observing</span>
             </div>
-            <p className="mt-2 pl-3.5 font-mono text-[10px] leading-relaxed text-sidebar-foreground/45">Oakland / north bay<br />one camera · mock analysis</p>
+            <p className="mt-2 pl-3.5 font-mono text-[10px] leading-relaxed text-sidebar-foreground/45">Live location<br />one camera · frame analysis</p>
           </div>
           <button type="button" onClick={() => window.alert('Support is available through your Reality operator workspace.')} data-testid="button-help" className="mt-4 flex items-center gap-2 px-2 text-[11px] text-sidebar-foreground/45 transition hover:text-sidebar-foreground">
             <CircleHelp size={14} /> Help &amp; documentation
