@@ -6,5 +6,5 @@
     "typeRoots": ["./artifacts/api-server/node_modules/@types"],
     "types": ["node"]
   },
-  "include": ["src/**/*.ts"]
+  "include": ["api/**/*.ts"]
 }
