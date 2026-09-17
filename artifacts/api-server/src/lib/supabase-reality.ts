@@ -47,6 +47,7 @@ async function supabaseFetch(
   if (config) {
     return fetch(`${config.url}${pathname}`, {
       ...init,
+      signal: init.signal ?? AbortSignal.timeout(8000),
       headers: {
         apikey: config.key,
         Authorization: `Bearer ${config.key}`,

@@ -2,6 +2,7 @@
   "name": "workspace",
   "version": "0.0.0",
   "license": "MIT",
+  "type": "module",
   "packageManager": "pnpm@11.19.0",
   "scripts": {
     "preinstall": "node scripts/preinstall.cjs",
@@ -15,9 +16,11 @@
   },
   "private": true,
   "dependencies": {
-    "@replit/connectors-sdk": "^0.4.3"
+    "@replit/connectors-sdk": "^0.4.3",
+    "express": "^5.2.1"
   },
   "devDependencies": {
+    "@types/express": "^5.0.6",
     "prettier": "^3.9.6",
     "typescript": "~5.9.3"
   }

@@ -52,11 +52,13 @@ export type RealitySettings = {
   vision_provider: string;
 };
 
+const demoStartedAt = new Date().toISOString();
+
 let state: WorldState = {
   location: "Live Location",
   camera: "Device Camera",
   zone: "Current Frame",
-  captured_at: "",
+  captured_at: demoStartedAt,
   summary:
     "Demo desk ready. Run an analysis or connect a camera to create the first observation.",
   objects: [
@@ -85,15 +87,25 @@ let state: WorldState = {
   people_count: 0,
 };
 
-let events: RealityEvent[] = [];
+let events: RealityEvent[] = [
+  {
+    id: "demo-object-count",
+    event_type: "object_count_increased",
+    object_name: "coca cola",
+    description: "Coca cola count increased from 1 to 2.",
+    zone: "Current Frame",
+    severity: "info",
+    created_at: demoStartedAt,
+  },
+];
 
 let camera: CameraStatus = {
   name: "Phone Camera",
   type: "mobile",
-  status: "offline",
-  last_seen_at: null,
-  frames_analyzed: 0,
-  ai_calls: 0,
+  status: "online",
+  last_seen_at: demoStartedAt,
+  frames_analyzed: 1,
+  ai_calls: 1,
   mode: process.env.GEMINI_API_KEY ? "vision" : "mock",
 };
 
@@ -213,9 +225,9 @@ export async function initializeRealityState() {
 export function getOverview() {
   const today = new Date().toDateString();
   return {
-    organization: "Demo Workspace",
-    location: "My Office",
-    zone: "Desk",
+    organization: "Reality Demo Workspace",
+    location: state.location,
+    zone: state.zone,
     state,
     events: events.slice(0, 8),
     camera,
@@ -458,12 +470,20 @@ export async function analyzeMock() {
       }
     : null;
   if (event) events = [event, ...events];
+  let persisted = false;
   if (getSupabaseMode() !== "unconfigured") {
-    await persistRealityObservation(next, event);
+    try {
+      await persistRealityObservation(next, event);
+      persisted = true;
+    } catch {
+      // Demo mode must remain usable when Supabase is temporarily unavailable
+      // or the migration has not been applied yet.
+    }
   }
   return {
     analyzed: true,
     changed: Boolean(event),
+    persisted,
     message: event
       ? "Scene analyzed and a meaningful change was recorded."
       : "Scene analyzed. No meaningful state change detected.",
@@ -496,7 +516,15 @@ export async function analyzeFrame(imageData: string) {
         created_at: next.captured_at,
       }
     : null;
-  await persistRealityObservation(next, event);
+  let persisted = false;
+  if (getSupabaseMode() !== "unconfigured") {
+    try {
+      await persistRealityObservation(next, event);
+      persisted = true;
+    } catch {
+      // The live result is still useful for a demo even if persistence fails.
+    }
+  }
   state = next;
   camera = {
     ...camera,
@@ -510,6 +538,7 @@ export async function analyzeFrame(imageData: string) {
   return {
     analyzed: true,
     changed: Boolean(event),
+    persisted,
     message: event
       ? "Live camera frame analyzed and a meaningful change was recorded."
       : "Live camera frame analyzed. No meaningful state change detected.",
